@@ -1,0 +1,24 @@
+# Secrets
+.env
+*.env
+!.env.example
+
+# Personal data — never commit the real database or the real eval set
+*.db
+*.sqlite
+*.sqlite3
+eval/real/
+eval/data/real/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
