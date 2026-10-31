@@ -1,0 +1,34 @@
+[
+  {
+    "text": "organize the garage so the bikes have room",
+    "expected_types": ["ask"]
+  },
+  {
+    "text": "she mentioned she'd love a calmer, less cluttered bedroom someday",
+    "expected_types": ["preference"]
+  },
+  {
+    "text": "she's been swamped with a work deadline this week",
+    "expected_types": ["context"]
+  },
+  {
+    "text": "take the recycling out and also water the plants on the porch",
+    "expected_types": ["ask", "ask"]
+  },
+  {
+    "text": "she said she prefers low-key birthdays over big parties",
+    "expected_types": ["preference"]
+  },
+  {
+    "text": "fix the squeaky hinge on the pantry door",
+    "expected_types": ["ask"]
+  },
+  {
+    "text": "her sister is visiting next month and she's a little stressed about hosting",
+    "expected_types": ["context"]
+  },
+  {
+    "text": "pick up her favorite tea from the store and also return the library books",
+    "expected_types": ["ask", "ask"]
+  }
+]
