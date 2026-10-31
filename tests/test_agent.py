@@ -55,3 +55,34 @@ def test_run_is_logged(tmp_db_conn, tmp_path, monkeypatch):
     client = FakeAnthropicClient([fake_text_response("noted")])
     agent.run_agent(tmp_db_conn, "the weather was nice", client)
     assert (tmp_path / "run.log").exists()
+
+
+def test_schedule_reminder_called_after_create_commitment(tmp_db_conn):
+    client = FakeAnthropicClient([
+        fake_tool_use_response("add_note",
+            {"text": "organize the garage", "type": "ask", "source_date": "2026-10-31"}),
+        fake_tool_use_response("create_commitment",
+            {"note_id": 1, "act": "organize the garage", "due": "2026-11-02"}),
+        fake_tool_use_response("schedule_reminder",
+            {"id": 1, "when": "2026-11-02T09:00:00", "text": "Organize the garage today."}),
+        fake_text_response("Logged and scheduled."),
+    ])
+    agent.run_agent(tmp_db_conn, "organize the garage", client)
+    due = db.get_due_reminders(tmp_db_conn, "2026-11-02T09:00:00")
+    assert due[0]["text"] == "Organize the garage today."
+
+
+def test_proactive_suggestion_returns_none_when_nothing_relevant(tmp_db_conn):
+    client = FakeAnthropicClient([fake_text_response("")])
+    result = agent.get_proactive_suggestion(tmp_db_conn, client)
+    assert result is None
+
+
+def test_proactive_suggestion_never_writes_commitments(tmp_db_conn):
+    db.insert_note(tmp_db_conn, "she's been stressed about work", "context", "2026-10-30")
+    client = FakeAnthropicClient([
+        fake_text_response("Maybe take dinner off her plate tonight."),
+    ])
+    suggestion = agent.get_proactive_suggestion(tmp_db_conn, client)
+    assert suggestion == "Maybe take dinner off her plate tonight."
+    assert db.list_open_commitments(tmp_db_conn) == []

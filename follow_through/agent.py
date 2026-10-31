@@ -21,9 +21,29 @@ ask implies several steps, commit to just the first one; later steps only \
 become commitments if the user mentions them again themselves.
 3. If a tool call fails, read the error and adjust your next call \
 accordingly — do not repeat the same failing call unchanged.
+4. After calling create_commitment for an ask, call search_notes to look \
+for related preference/context notes, then call schedule_reminder with a \
+single due-date-based reminder: set `when` on or before the commitment's \
+`due` date, and write `text` as a short, ready-to-send nudge message that \
+includes anything relevant you found via search_notes.
 
 When you are done, reply with a short confirmation of what you logged.
 """
+
+_PROACTIVE_SUGGESTION_PROMPT = """\
+Look at open commitments and stored preference/context notes for anything \
+that would make a good, low-effort act of service to do unprompted right \
+now. If something genuinely stands out, reply with ONE short, concrete \
+suggestion in a single sentence. If nothing stands out, reply with an \
+empty response — do not force a suggestion. Never propose or create a \
+commitment; this is informational only.
+"""
+
+_READ_ONLY_TOOL_NAMES = {"search_notes", "list_open_commitments"}
+_READ_ONLY_TOOL_SCHEMAS = [s for s in tools.TOOL_SCHEMAS if s["name"] in _READ_ONLY_TOOL_NAMES]
+_READ_ONLY_TOOL_HANDLERS = {
+    name: handler for name, handler in tools.TOOL_HANDLERS.items() if name in _READ_ONLY_TOOL_NAMES
+}
 
 
 @dataclass
@@ -44,6 +64,35 @@ def _block_to_param(block) -> dict:
 
 def _extract_text(content) -> str:
     return "".join(block.text for block in content if block.type == "text")
+
+
+def _execute_tool_use_blocks(conn, content, handlers: dict) -> tuple[list[dict], list[dict]]:
+    tool_results = []
+    log_entries = []
+    for block in content:
+        if block.type != "tool_use":
+            continue
+        try:
+            output = handlers[block.name](conn, **block.input)
+            tool_result = {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": json.dumps(output),
+            }
+        except tools.ToolError as e:
+            tool_result = {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": str(e),
+                "is_error": True,
+            }
+        log_entries.append({
+            "tool_name": block.name,
+            "tool_input": block.input,
+            "tool_result": tool_result,
+        })
+        tool_results.append(tool_result)
+    return tool_results, log_entries
 
 
 def run_agent(
@@ -89,31 +138,40 @@ def run_agent(
             {"role": "assistant", "content": [_block_to_param(b) for b in response.content]}
         )
 
-        tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            try:
-                output = tools.TOOL_HANDLERS[block.name](conn, **block.input)
-                tool_result = {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps(output),
-                }
-            except tools.ToolError as e:
-                tool_result = {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": str(e),
-                    "is_error": True,
-                }
-            log.append({
-                "tool_name": block.name,
-                "tool_input": block.input,
-                "tool_result": tool_result,
-            })
-            tool_results.append(tool_result)
+        tool_results, log_entries = _execute_tool_use_blocks(conn, response.content, tools.TOOL_HANDLERS)
+        log.extend(log_entries)
 
+        messages.append({"role": "user", "content": tool_results})
+        steps_used += 1
+
+
+def get_proactive_suggestion(conn, client, model: str = "claude-sonnet-5-5") -> str | None:
+    messages = [
+        {"role": "user", "content": "Is there a good proactive act-of-service suggestion right now?"}
+    ]
+    steps_used = 0
+
+    while True:
+        response = client.messages.create(
+            model=model,
+            system=_PROACTIVE_SUGGESTION_PROMPT,
+            tools=_READ_ONLY_TOOL_SCHEMAS,
+            messages=messages,
+        )
+
+        if response.stop_reason != "tool_use":
+            text = _extract_text(response.content).strip()
+            return text if text else None
+
+        if steps_used >= MAX_STEPS:
+            return None
+
+        messages.append(
+            {"role": "assistant", "content": [_block_to_param(b) for b in response.content]}
+        )
+        tool_results, _log_entries = _execute_tool_use_blocks(
+            conn, response.content, _READ_ONLY_TOOL_HANDLERS
+        )
         messages.append({"role": "user", "content": tool_results})
         steps_used += 1
 
