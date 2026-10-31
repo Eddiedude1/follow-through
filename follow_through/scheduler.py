@@ -18,3 +18,14 @@ def run_forever(conn, send_fn: Callable[[dict], None], poll_seconds: int = 1800)
         now = datetime.now(timezone.utc).isoformat()
         fire_due_reminders(conn, now, send_fn)
         time.sleep(poll_seconds)
+
+
+def main() -> None:
+    from follow_through import bot, config
+
+    conn = db.connect(config.DB_PATH)
+    run_forever(conn, bot.send_reminder)
+
+
+if __name__ == "__main__":
+    main()

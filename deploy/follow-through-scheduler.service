@@ -1,0 +1,15 @@
+[Unit]
+Description=Follow Through reminder scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/follow-through
+EnvironmentFile=/home/pi/follow-through/.env
+ExecStart=/home/pi/follow-through/.venv/bin/python -m follow_through.scheduler
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
