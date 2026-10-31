@@ -1,0 +1,9 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DB_PATH = os.environ.get("FOLLOW_THROUGH_DB_PATH", "follow_through.db")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
