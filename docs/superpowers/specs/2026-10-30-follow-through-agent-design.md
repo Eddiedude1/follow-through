@@ -74,7 +74,7 @@ Single SQLite file. Tables: `notes`, `commitments`, `reminders` (`reminders.text
 
 ## Loop Requirements
 
-- Max-step limit per run
+- Max-step limit per run: 15 tool-call steps before the agent must stop and report back rather than keep looping
 - Tool errors returned to the model, not swallowed
 - Full message history managed explicitly
 - Every run logged for debugging
@@ -84,7 +84,7 @@ Single SQLite file. Tables: `notes`, `commitments`, `reminders` (`reminders.text
 - **Zero dropped asks:** every `ask` ends as done or explicitly dismissed
 - **Commitment completion rate:** done / total committed
 - **Median time from capture to done**
-- **Extraction accuracy:** measured on a hand-labeled set of \~30 of my own notes (precision/recall on item type)
+- **Extraction accuracy:** measured on a hand-labeled set of \~30 of my own notes (precision/recall on item type). No numeric target yet — set one after labeling the set (Build Order step 1), once I can see what accuracy actually looks like on real data.
 
 ## Done Means
 
