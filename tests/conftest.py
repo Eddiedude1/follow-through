@@ -2,7 +2,7 @@ import itertools
 
 import pytest
 
-from follow_through import db
+from follow_through import config, db
 
 
 @pytest.fixture
@@ -11,6 +11,15 @@ def tmp_db_conn():
     db.init_schema(conn)
     yield conn
     conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _default_telegram_chat_id(monkeypatch):
+    # FakeChat's default id is 1 — authorize it by default so existing
+    # fake_update/fake_context/fake_callback_query-based tests don't all
+    # need to know about the chat-id authorization check. Tests for the
+    # authorization check itself override this with a different id.
+    monkeypatch.setattr(config, "TELEGRAM_CHAT_ID", "1")
 
 
 class FakeContentBlock:
@@ -43,6 +52,7 @@ def fake_tool_use_response(name, input):
 class FakeAnthropicClient:
     def __init__(self, responses):
         self._responses = iter(responses)
+        self.calls = []
         self.messages = self._Messages(self)
 
     class _Messages:
@@ -50,6 +60,7 @@ class FakeAnthropicClient:
             self._outer = outer
 
         def create(self, **kwargs):
+            self._outer.calls.append(kwargs)
             try:
                 return next(self._outer._responses)
             except StopIteration:
@@ -60,9 +71,11 @@ class FakeTelegramMessage:
     def __init__(self, text=""):
         self.text = text
         self.replies = []
+        self.markups = []
 
     async def reply_text(self, text, reply_markup=None):
         self.replies.append(text)
+        self.markups.append(reply_markup)
 
 
 class FakeChat:
@@ -116,6 +129,7 @@ class FakeCallbackQuery:
 
     async def edit_message_text(self, text, reply_markup=None):
         self.message.replies.append(text)
+        self.message.markups.append(reply_markup)
 
 
 class _FakeCallbackUpdate:

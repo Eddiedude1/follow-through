@@ -20,10 +20,18 @@ def run_forever(conn, send_fn: Callable[[dict], None], poll_seconds: int = 1800)
         time.sleep(poll_seconds)
 
 
-def main() -> None:
-    from follow_through import bot, config
+def _connect():
+    from follow_through import config
 
     conn = db.connect(config.DB_PATH)
+    db.init_schema(conn)
+    return conn
+
+
+def main() -> None:
+    from follow_through import bot
+
+    conn = _connect()
     run_forever(conn, bot.send_reminder)
 
 

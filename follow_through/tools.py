@@ -1,6 +1,8 @@
-from datetime import date, datetime
+import sqlite3
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
-from follow_through import db
+from follow_through import config, db
 
 VALID_NOTE_TYPES = {"ask", "preference", "context"}
 
@@ -44,11 +46,23 @@ def mark_done(conn, id: int, reaction: str) -> dict:
 
 
 def schedule_reminder(conn, id: int, when: str, text: str) -> dict:
+    open_ids = {c["id"] for c in db.list_open_commitments(conn)}
+    if id not in open_ids:
+        raise ToolError(f"commitment {id} does not exist or is not open")
+
     try:
-        datetime.fromisoformat(when)
+        parsed = datetime.fromisoformat(when)
     except ValueError:
         raise ToolError(f"when must be an ISO 8601 datetime, got {when!r}")
-    reminder_id = db.insert_reminder(conn, id, when, text)
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ZoneInfo(config.TIMEZONE))
+    normalized_when = parsed.astimezone(timezone.utc).isoformat()
+
+    try:
+        reminder_id = db.insert_reminder(conn, id, normalized_when, text)
+    except sqlite3.IntegrityError:
+        raise ToolError(f"commitment {id} already has a reminder scheduled")
     return {"reminder_id": reminder_id}
 
 

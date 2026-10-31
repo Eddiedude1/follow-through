@@ -2,14 +2,25 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from follow_through import config, tools
 
 MAX_STEPS = 15
 
+
+def _current_time_context() -> str:
+    now_local = datetime.now(ZoneInfo(config.TIMEZONE))
+    return f"[Current date/time: {now_local.isoformat()} ({config.TIMEZONE})]\n\n"
+
+
 SYSTEM_PROMPT = """\
 You help capture the small things a user's wife mentions, and make sure \
 actionable ones get followed through on.
+
+Each message starts with a `[Current date/time: ...]` marker — use that, \
+not your training data, as "today" when picking `source_date` or a `due` \
+date.
 
 For each message:
 1. Split it into discrete items and classify each with add_note as `ask` \
@@ -73,6 +84,8 @@ def _execute_tool_use_blocks(conn, content, handlers: dict) -> tuple[list[dict],
         if block.type != "tool_use":
             continue
         try:
+            if block.name not in handlers:
+                raise tools.ToolError(f"unknown tool: {block.name!r}")
             output = handlers[block.name](conn, **block.input)
             tool_result = {
                 "type": "tool_result",
@@ -84,6 +97,17 @@ def _execute_tool_use_blocks(conn, content, handlers: dict) -> tuple[list[dict],
                 "type": "tool_result",
                 "tool_use_id": block.id,
                 "content": str(e),
+                "is_error": True,
+            }
+        except Exception as e:
+            # Global Constraint: tool errors are returned to the model,
+            # never raised past the loop — this is the catch-all for
+            # anything that isn't a well-formed ToolError (bad arguments,
+            # a db error, etc.).
+            tool_result = {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": f"{type(e).__name__}: {e}",
                 "is_error": True,
             }
         log_entries.append({
@@ -102,13 +126,15 @@ def run_agent(
     model: str = "claude-sonnet-5-5",
     max_steps: int = MAX_STEPS,
 ) -> AgentResult:
-    messages = [{"role": "user", "content": user_message}]
+    messages = [{"role": "user", "content": _current_time_context() + user_message}]
     steps_used = 0
     log: list[dict] = []
 
     while True:
         response = client.messages.create(
             model=model,
+            max_tokens=4096,
+            output_config={"effort": "low"},
             system=SYSTEM_PROMPT,
             tools=tools.TOOL_SCHEMAS,
             messages=messages,
@@ -126,7 +152,11 @@ def run_agent(
 
         if steps_used >= max_steps:
             result = AgentResult(
-                final_text="",
+                final_text=(
+                    f"Step limit reached after {steps_used} tool calls — "
+                    "stopping here with partial work done. Try again or "
+                    "break the request into smaller pieces."
+                ),
                 steps_used=steps_used,
                 stopped_reason="step_limit",
                 log=log,
@@ -154,6 +184,8 @@ def get_proactive_suggestion(conn, client, model: str = "claude-sonnet-5-5") -> 
     while True:
         response = client.messages.create(
             model=model,
+            max_tokens=1024,
+            output_config={"effort": "low"},
             system=_PROACTIVE_SUGGESTION_PROMPT,
             tools=_READ_ONLY_TOOL_SCHEMAS,
             messages=messages,

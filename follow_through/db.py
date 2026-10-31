@@ -35,7 +35,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
             when_ts TEXT NOT NULL,
             text TEXT NOT NULL,
             sent INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(commitment_id)
         );
         """
     )
@@ -136,5 +137,21 @@ def mark_reminder_sent(conn: sqlite3.Connection, reminder_id: int) -> None:
     conn.execute(
         "UPDATE reminders SET sent = 1 WHERE id = ?",
         (reminder_id,),
+    )
+    conn.commit()
+
+
+def get_unsent_reminder_for_commitment(conn: sqlite3.Connection, commitment_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM reminders WHERE commitment_id = ? AND sent = 0 ORDER BY id DESC LIMIT 1",
+        (commitment_id,),
+    ).fetchone()
+    return _row_to_dict(row) if row else None
+
+
+def update_reminder_when(conn: sqlite3.Connection, reminder_id: int, when_ts: str) -> None:
+    conn.execute(
+        "UPDATE reminders SET when_ts = ? WHERE id = ?",
+        (when_ts, reminder_id),
     )
     conn.commit()

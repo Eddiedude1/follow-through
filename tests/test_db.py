@@ -49,3 +49,30 @@ def test_get_due_reminders_returns_open_due_unsent(tmp_db_conn):
     rid = db.insert_reminder(tmp_db_conn, cid, "2026-11-02T09:00:00", "reminder text")
     due = db.get_due_reminders(tmp_db_conn, "2026-11-02T09:00:00")
     assert [r["id"] for r in due] == [rid]
+
+
+def test_get_unsent_reminder_for_commitment_returns_latest_unsent(tmp_db_conn):
+    # Final review Important #6: editing a due date needs to find the
+    # existing reminder for a commitment so it can be moved.
+    note_id = db.insert_note(tmp_db_conn, "x", "ask", "2026-10-30")
+    cid = db.insert_commitment(tmp_db_conn, note_id, "x", "2026-11-02")
+    rid = db.insert_reminder(tmp_db_conn, cid, "2026-11-02T09:00:00", "reminder text")
+    reminder = db.get_unsent_reminder_for_commitment(tmp_db_conn, cid)
+    assert reminder["id"] == rid
+
+
+def test_get_unsent_reminder_for_commitment_returns_none_when_sent(tmp_db_conn):
+    note_id = db.insert_note(tmp_db_conn, "x", "ask", "2026-10-30")
+    cid = db.insert_commitment(tmp_db_conn, note_id, "x", "2026-11-02")
+    rid = db.insert_reminder(tmp_db_conn, cid, "2026-11-02T09:00:00", "reminder text")
+    db.mark_reminder_sent(tmp_db_conn, rid)
+    assert db.get_unsent_reminder_for_commitment(tmp_db_conn, cid) is None
+
+
+def test_update_reminder_when(tmp_db_conn):
+    note_id = db.insert_note(tmp_db_conn, "x", "ask", "2026-10-30")
+    cid = db.insert_commitment(tmp_db_conn, note_id, "x", "2026-11-02")
+    rid = db.insert_reminder(tmp_db_conn, cid, "2026-11-02T09:00:00", "reminder text")
+    db.update_reminder_when(tmp_db_conn, rid, "2026-11-05T09:00:00")
+    reminder = db.get_unsent_reminder_for_commitment(tmp_db_conn, cid)
+    assert reminder["when_ts"] == "2026-11-05T09:00:00"

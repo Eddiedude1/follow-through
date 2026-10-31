@@ -28,3 +28,13 @@ def test_sample_eval_set_is_valid():
     items = run_eval.load_labeled_set("eval/sample/labeled_notes.json")
     assert len(items) >= 5
     assert all(set(i["expected_types"]) <= {"ask", "preference", "context"} for i in items)
+
+
+def test_sample_eval_set_includes_a_zero_item_example():
+    # Final review Important #9: the Review Focus item "no actionable
+    # content -> zero commitments" was only nominally exercised in
+    # test_agent.py (a stubbed client that never calls a tool can't fail
+    # that check) — the real check has to be the eval, but the sample set
+    # had no zero-item example to catch a model that hallucinates one.
+    items = run_eval.load_labeled_set("eval/sample/labeled_notes.json")
+    assert any(i["expected_types"] == [] for i in items)
