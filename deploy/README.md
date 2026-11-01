@@ -19,8 +19,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ## 3. Clone the repo and install dependencies
 
 ```bash
-git clone <repo-url> /home/pi/follow-through
-cd /home/pi/follow-through
+git clone <repo-url> /home/eddiedude/follow-through
+cd /home/eddiedude/follow-through
 uv sync
 ```
 
