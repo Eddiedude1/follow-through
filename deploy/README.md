@@ -153,6 +153,27 @@ systemctl status follow-through-bot follow-through-scheduler follow-through-back
 journalctl -u follow-through-bot -f
 ```
 
+## Tools installed on the Pi
+
+A summary of everything installed outside the Python virtualenv, and why:
+
+| Tool | Installed in | Why |
+|---|---|---|
+| `uv` | Step 4 | Runs the app and its pinned dependencies (`uv sync`, `uv run`) |
+| `rclone` | Step 7 | Syncs local backups to Google Drive (or another cloud provider) |
+| `ethtool` | Troubleshooting | Only needed if diagnosing a dead Ethernet link — not required for normal operation |
+
+One more worth adding for convenience, though nothing above strictly requires it — the app itself talks to SQLite through Python's built-in `sqlite3` module, no separate install needed, but the `sqlite3` **command-line tool** makes ad-hoc inspection much easier than writing a one-off Python script each time:
+
+```bash
+sudo apt install -y sqlite3
+```
+
+Then, from `~/follow-through`:
+```bash
+sqlite3 follow_through.db "SELECT * FROM commitments;"
+```
+
 ## Troubleshooting
 
 **`telegram.error.TimedOut` on startup or when sending a message, with no other error:**
