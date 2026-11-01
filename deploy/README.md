@@ -165,5 +165,19 @@ journalctl -u follow-through-bot -f
 **Bot replies "Something went wrong handling that. Try again?":**
 `handle_error` logs the real exception via Python's `logging` module — check `journalctl -u follow-through-bot -n 30 --no-pager -o cat` right after reproducing it (`-o cat` strips the timestamp/hostname prefix so long traceback lines are less likely to be cut off in a narrow terminal).
 
-**Pasting multi-line commands into the Pi's terminal breaks them (e.g. `crontab -e`, `python3 -c "..."` with embedded newlines):**
-Some SSH clients insert real line breaks at the point text wraps visually, splitting what should be one line into several (cron then rejects it; Python raises `IndentationError`). Prefer: single short lines, or write a small script file in `nano` with short lines instead of one long pasted command.
+**Pasting a long one-line command (e.g. a `crontab -e` entry, or `python3 -c "..."` with semicolons) breaks it into several lines once pasted:**
+If the command was copied from somewhere that visually wraps long lines for display (a chat UI, a narrow terminal), the paste can carry those wraps as real line breaks, splitting one logical line into several — cron then rejects the entry, and Python raises `IndentationError` on the broken-up `-c` string. Workaround: skip the one-liner entirely and write a small script file instead, with each statement on its own short line:
+```bash
+nano inspect.py
+```
+```python
+import sqlite3
+c = sqlite3.connect("follow_through.db")
+c.row_factory = sqlite3.Row
+for r in c.execute("SELECT * FROM notes"):
+    print(dict(r))
+```
+```bash
+.venv/bin/python3 inspect.py
+```
+Each line short enough that it can't wrap even in a narrow terminal, so the paste lands exactly as written.
