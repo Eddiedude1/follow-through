@@ -49,7 +49,7 @@ async def handle_done_reply(update, context) -> None:
         f"Commitment id {commitment_id} is done. "
         f"Her reaction: {reaction_text}. Call mark_done for it."
     )
-    result = agent.run_agent(conn, message, client)
+    result = await asyncio.to_thread(agent.run_agent, conn, message, client)
     await update.message.reply_text(_reply_text_or_fallback(result.final_text))
 
 
@@ -88,7 +88,7 @@ async def handle_message(update, context) -> None:
 
     client = context.bot_data["client"]
     before_ids = {c["id"] for c in db.list_open_commitments(conn)}
-    result = agent.run_agent(conn, update.message.text, client)
+    result = await asyncio.to_thread(agent.run_agent, conn, update.message.text, client)
     after = db.list_open_commitments(conn)
     new_commitments = [c for c in after if c["id"] not in before_ids]
 
@@ -132,7 +132,7 @@ async def handle_week(update, context) -> None:
     else:
         await update.message.reply_text("Nothing due this week.")
 
-    suggestion = agent.get_proactive_suggestion(conn, client)
+    suggestion = await asyncio.to_thread(agent.get_proactive_suggestion, conn, client)
     if suggestion is not None:
         await update.message.reply_text(f"Idea: {suggestion}")
 

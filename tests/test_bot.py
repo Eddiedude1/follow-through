@@ -1,7 +1,17 @@
+import asyncio
+import time
+
 import pytest
 
 from follow_through import agent, bot, config, db
-from tests.conftest import FakeChat, FakeContext, FakeUpdate, _FakeCallbackUpdate, FakeCallbackQuery
+from tests.conftest import (
+    FakeChat,
+    FakeContext,
+    FakeUpdate,
+    _FakeCallbackUpdate,
+    FakeCallbackQuery,
+    fake_text_response,
+)
 
 
 def _callback_datas(markup):
@@ -119,6 +129,43 @@ async def test_edit_due_moves_existing_reminder_to_new_date(tmp_db_conn, fake_co
     reminder = db.get_unsent_reminder_for_commitment(tmp_db_conn, cid)
     assert reminder["when_ts"] == "2026-11-05T09:00:00"
     assert "pending_edit_due" not in fake_context.user_data
+
+
+@pytest.mark.asyncio
+async def test_handle_message_does_not_block_event_loop(tmp_db_conn):
+    # Found deploying to a real Pi: agent.run_agent makes a blocking,
+    # synchronous network call to Anthropic. Called directly from this
+    # async handler, it freezes the whole event loop for the call's
+    # duration -- long enough on a Pi 3 to time out Telegram's own
+    # long-poll connection. The sqlite3 access below also catches the
+    # fix's other sharp edge: offloading to a worker thread breaks the
+    # shared connection unless it was opened with check_same_thread=False.
+    class SlowClient:
+        class _Messages:
+            def create(self, **kwargs):
+                time.sleep(0.3)
+                tmp_db_conn.execute("SELECT 1")
+                return fake_text_response("done")
+
+        def __init__(self):
+            self.messages = self._Messages()
+
+    context = FakeContext(conn=tmp_db_conn, client=SlowClient())
+    update = FakeUpdate(text="take out the trash")
+
+    ticks = 0
+
+    async def ticker():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    ticker_task = asyncio.create_task(ticker())
+    await bot.handle_message(update, context)
+    ticker_task.cancel()
+
+    assert ticks >= 5
 
 
 def test_build_app_initializes_schema_on_a_fresh_db(tmp_path, monkeypatch):
