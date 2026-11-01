@@ -153,6 +153,21 @@ systemctl status follow-through-bot follow-through-scheduler follow-through-back
 journalctl -u follow-through-bot -f
 ```
 
+## 9. Verify it's actually working
+
+Services running isn't the same as working — confirm the real pipeline end to end:
+
+1. Open a chat with your bot in Telegram. The first message you see there — something like "Hi! I'm ready to capture notes..." — is Telegram showing the bot's **description** (set via BotFather), not a message the app sent. It won't appear in any logs or history; it's just Telegram's UI.
+2. Send a real message, e.g.:
+   ```
+   Wife wants me to take out the trash tomorrow morning
+   ```
+3. Expect a short confirmation reply, followed by a separate message like `take out the trash — due 2026-11-02` with four buttons: **Confirm**, **Edit due date**, **Dismiss**, **Done**.
+4. Tap **Confirm** — the message should update to "Confirmed." with the button row narrowing to just Edit/Dismiss/Done.
+5. If anything fails silently (no reply at all, or a generic "Something went wrong" reply), see **Troubleshooting** below — `handle_error` logs the real exception to `journalctl`.
+
+If you restarted the bot service several times while testing (common while debugging), Telegram may redeliver the same unacknowledged message each time it comes back up, creating a few duplicate rows in the `notes` table. This is harmless — no duplicate commitments or reminders result, since those only get created once the agent reaches that point successfully — but if you want to tidy them up, see the `sqlite3`/Python-script examples below.
+
 ## Tools installed on the Pi
 
 A summary of everything installed outside the Python virtualenv, and why:
