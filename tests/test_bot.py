@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 import pytest
@@ -197,6 +198,17 @@ def test_build_app_configures_longer_timeouts_for_flaky_networks(tmp_path, monke
     assert regular_timeout.read > 5.0
     assert get_updates_timeout.connect > 5.0
     assert get_updates_timeout.read > 5.0
+
+
+@pytest.mark.asyncio
+async def test_handle_error_logs_the_exception(fake_update, fake_context, caplog):
+    # Found deploying to a real Pi: handle_error replied to the user with
+    # a generic message but never logged anything, so a real production
+    # failure showed nothing in journalctl -- completely undiagnosable.
+    fake_context.error = ValueError("boom")
+    with caplog.at_level(logging.ERROR):
+        await bot.handle_error(fake_update, fake_context)
+    assert "boom" in caplog.text
 
 
 def test_build_app_registers_an_error_handler(tmp_path, monkeypatch):

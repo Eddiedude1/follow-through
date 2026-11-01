@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 import anthropic
@@ -7,6 +8,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from follow_through import agent, config, db
+
+logger = logging.getLogger(__name__)
 
 
 def _is_authorized_chat(chat_id) -> bool:
@@ -182,6 +185,7 @@ async def handle_button(update, context) -> None:
 
 
 async def handle_error(update, context) -> None:
+    logger.error("Unhandled exception in bot handler", exc_info=context.error)
     if update is not None and getattr(update, "effective_chat", None) is not None:
         try:
             await update.effective_chat.send_message(
