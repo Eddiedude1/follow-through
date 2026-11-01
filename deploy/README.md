@@ -36,7 +36,8 @@ Edit `.env` and fill in:
 - `TELEGRAM_BOT_TOKEN` — from @BotFather
 - `TELEGRAM_CHAT_ID` — message your bot once, then check its logs/getUpdates for your chat ID
 - `ANTHROPIC_API_KEY`
-- `FOLLOW_THROUGH_BACKUP_DEST_DIR` — a path inside your mounted/synced cloud storage folder (e.g. a Google Drive sync directory) where daily DB backups land
+- `FOLLOW_THROUGH_BACKUP_DEST_DIR` — a local directory where daily DB backups land (e.g. `/home/eddiedude/follow-through-backups`). Sync that directory to cloud storage separately (e.g. a cron job running `rclone sync`) if you want off-device backups.
+- `FOLLOW_THROUGH_TIMEZONE` — an IANA timezone name (e.g. `America/Chicago`); defaults to `UTC` if unset, which will make reminder times wrong for most users
 
 ## 5. Install and start the three systemd units
 
