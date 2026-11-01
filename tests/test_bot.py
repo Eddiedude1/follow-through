@@ -182,6 +182,23 @@ def test_build_app_initializes_schema_on_a_fresh_db(tmp_path, monkeypatch):
     assert {"notes", "commitments", "reminders"} <= tables
 
 
+def test_build_app_configures_longer_timeouts_for_flaky_networks(tmp_path, monkeypatch):
+    # Found deploying to a real Pi on Wi-Fi: python-telegram-bot's default
+    # 5s connect/read timeouts are tuned for a desktop on fast wired
+    # internet, not a Pi 3 on home Wi-Fi -- normal latency variance there
+    # was enough to time out Telegram's own long-poll connection.
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "fresh.db"))
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123456:FAKE-TOKEN-FOR-TEST")
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "fake-key-for-test")
+    app = bot.build_app()
+    regular_timeout = app.bot._request[0]._client.timeout
+    get_updates_timeout = app.bot._request[1]._client.timeout
+    assert regular_timeout.connect > 5.0
+    assert regular_timeout.read > 5.0
+    assert get_updates_timeout.connect > 5.0
+    assert get_updates_timeout.read > 5.0
+
+
 def test_build_app_registers_an_error_handler(tmp_path, monkeypatch):
     # Final review Important #7: no error handler meant any exception in a
     # handler (including Critical #1's missing max_tokens) was invisible

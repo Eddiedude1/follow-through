@@ -204,7 +204,19 @@ def build_app():
     db.init_schema(conn)
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
-    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(config.TELEGRAM_BOT_TOKEN)
+        .connect_timeout(20.0)
+        .read_timeout(20.0)
+        .write_timeout(20.0)
+        .pool_timeout(5.0)
+        .get_updates_connect_timeout(20.0)
+        .get_updates_read_timeout(20.0)
+        .get_updates_write_timeout(20.0)
+        .get_updates_pool_timeout(5.0)
+        .build()
+    )
     app.bot_data["conn"] = conn
     app.bot_data["client"] = client
 
