@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from follow_through import agent, config, db
-from tests.conftest import FakeAnthropicClient, fake_text_response, fake_tool_use_response
+from tests.conftest import (
+    FakeAnthropicClient,
+    FakeContentBlock,
+    fake_text_response,
+    fake_tool_use_response,
+)
 
 
 def test_no_actionable_content_creates_no_commitments(tmp_db_conn):
@@ -155,6 +162,30 @@ def test_get_proactive_suggestion_sends_max_tokens_and_effort(tmp_db_conn):
     agent.get_proactive_suggestion(tmp_db_conn, client)
     assert "max_tokens" in client.calls[0]
     assert client.calls[0].get("output_config", {}).get("effort") in {"low", "medium"}
+
+
+def test_block_to_param_handles_thinking_blocks():
+    # Found deploying to a real Pi: the real API returned a thinking block
+    # even though extended thinking was never requested, and the previous
+    # code crashed with "unexpected content block type: thinking" trying
+    # to echo the assistant turn back for the next request.
+    block = FakeContentBlock("thinking", thinking="reasoning text", signature="sig123")
+    assert agent._block_to_param(block) == {
+        "type": "thinking",
+        "thinking": "reasoning text",
+        "signature": "sig123",
+    }
+
+
+def test_block_to_param_handles_redacted_thinking_blocks():
+    block = FakeContentBlock("redacted_thinking", data="opaque-data")
+    assert agent._block_to_param(block) == {"type": "redacted_thinking", "data": "opaque-data"}
+
+
+def test_block_to_param_still_rejects_truly_unknown_block_types():
+    block = FakeContentBlock("some_new_type")
+    with pytest.raises(ValueError):
+        agent._block_to_param(block)
 
 
 def test_run_agent_grounds_the_model_with_current_date(tmp_db_conn):
