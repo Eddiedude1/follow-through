@@ -79,6 +79,17 @@ A few things worth knowing about this picture:
 - **Three separate systemd services, one shared SQLite file.** The bot writes new notes/commitments; the scheduler only reads reminders and marks them sent; the backup service only reads the whole DB to copy it. None of them talk to each other directly — the database is the shared state.
 - **Backups are two hops, not one.** The app only ever writes to a local folder on the SD card; `rclone` (via cron, outside the app entirely) is what actually gets a copy off the Pi and into Google Drive.
 
+### Telegram integration
+
+The app doesn't expose anything to the internet — it reaches out to Telegram, nothing reaches in. That's what makes it deployable on a home network with no port forwarding, no public IP, and no TLS certificate to manage.
+
+- **Identity:** [@BotFather](https://t.me/botfather) (Telegram's own bot for creating bots) issues a bot token when you register a new bot. That token is what lets `follow_through/bot.py` authenticate to Telegram's Bot API as that specific bot — it's the only thing Telegram actually checks.
+- **Transport — long polling, not webhooks:** `build_app()` calls `app.run_polling()` (via `python-telegram-bot`), which repeatedly asks Telegram's servers "any new messages for me?" over an outbound HTTPS connection. The alternative — webhooks — would require Telegram to be able to reach an HTTPS endpoint *on the Pi*, which a home router normally blocks. Polling flips that: the Pi always initiates the connection, so it works from behind NAT with zero network configuration.
+- **Privacy despite being a "public" bot:** Telegram has no concept of a private bot — anyone who finds `@Follow_Through_Bot`'s username could message it. The app enforces privacy itself: every incoming update is checked against `TELEGRAM_CHAT_ID` in `.env` (`_is_authorized_chat()` in `bot.py`), and anything from a different chat is silently ignored. That one environment variable is the entire access-control model.
+- **Commands vs. free text:** `/open` and `/week` are registered as explicit `CommandHandler`s; everything else (the actual notes about your wife) flows through a single `MessageHandler` into `agent.run_agent()`. Button taps (Confirm/Edit due/Dismiss/Done) come back as a separate `CallbackQueryHandler`, not as text messages.
+
+Full setup steps (BotFather walkthrough, finding your chat ID) are in [`deploy/README.md`](deploy/README.md#6-configure-secrets).
+
 ## Running it
 
 ```bash
