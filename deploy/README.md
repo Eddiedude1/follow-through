@@ -63,12 +63,24 @@ nano .env
 ```
 
 Fill in:
-- `TELEGRAM_BOT_TOKEN` — from [@BotFather](https://t.me/botfather): `/newbot`, pick a display name and a username ending in `bot`. **Treat this as a secret** — if it's ever pasted somewhere it shouldn't be, revoke and reissue it via BotFather (`/mybots` → your bot → API Token → Revoke current token).
-- `TELEGRAM_CHAT_ID` — message your new bot once (anything), then run:
-  ```bash
-  curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates"
-  ```
-  and read the `"chat":{"id":...}` value from the response.
+
+**`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`** — full steps:
+
+1. Install Telegram (if you don't have it) and sign up/log in with your phone number.
+2. Open a chat with **`@BotFather`**, Telegram's own official bot for creating other bots. If searching `BotFather` in-app doesn't find it, open **https://t.me/botfather** directly — it opens the chat in the app.
+3. Send `/newbot`.
+4. When asked for a **name**, type anything you like (e.g. `Follow Through`) — this is just the display name.
+5. When asked for a **username**, it must be unique and end in `bot` (e.g. `Follow_Through_Eddie_Bot`). BotFather tells you if it's taken.
+6. BotFather replies with an **API token** — a string like `123456789:AAEz...`. This is `TELEGRAM_BOT_TOKEN`.
+   **Treat it as a secret** — never paste it into a chat, commit, or log. If it's ever exposed, revoke and reissue it immediately: in BotFather, send `/mybots`, select your bot, **API Token** → **Revoke current token**, then use the new one.
+7. In Telegram, search for the bot you just created by its exact username and open a chat with it.
+8. Send it any message (e.g. "hi") — this gives Telegram something to hand back in the next step.
+9. Run (substituting your real token — this command itself is safe to run, since the response only contains your chat info, not the token):
+   ```bash
+   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates"
+   ```
+10. In the JSON response, find `"chat":{"id":...}` — that number is `TELEGRAM_CHAT_ID`. This value (unlike the token) is fine to share/note openly; it only identifies your chat, not your bot's credentials.
+
 - `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com/settings/keys). Create a dedicated key for this app rather than reusing one from somewhere else, so you can track/revoke its usage independently.
 - `FOLLOW_THROUGH_BACKUP_DEST_DIR` — a local directory where daily DB backups land, e.g.:
   ```bash
