@@ -238,3 +238,14 @@ def test_system_prompt_covers_reporting_a_commitment_done():
 def test_system_prompt_asks_for_plain_text_replies():
     # Telegram showed literal ** because the model replied in markdown.
     assert "plain text" in agent.SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_separates_requests_to_the_bot_from_wife_asks():
+    # UAT 2026-11-06: "give me some ideas for our anniversary" was logged as
+    # "Wife wants to brainstorm..." (an ask) with a commitment and reminder.
+    # The prompt only knew about things the wife mentions, so a request made
+    # to the bot itself had nowhere else to go.
+    prompt = agent.SYSTEM_PROMPT.lower()
+    assert "directly" in prompt
+    assert "ideas" in prompt
+    assert "do not log" in prompt

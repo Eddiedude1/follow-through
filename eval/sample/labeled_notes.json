@@ -34,5 +34,17 @@
   {
     "text": "the weather was nice today and we took a walk",
     "expected_types": []
+  },
+  {
+    "text": "can you give me some ideas for our anniversary?",
+    "expected_types": []
+  },
+  {
+    "text": "any ideas for what I should get her for her birthday?",
+    "expected_types": []
+  },
+  {
+    "text": "she'll be at work late tonight, any dinner ideas?",
+    "expected_types": ["context"]
   }
 ]

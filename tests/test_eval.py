@@ -38,3 +38,15 @@ def test_sample_eval_set_includes_a_zero_item_example():
     # had no zero-item example to catch a model that hallucinates one.
     items = run_eval.load_labeled_set("eval/sample/labeled_notes.json")
     assert any(i["expected_types"] == [] for i in items)
+
+
+def test_sample_eval_set_includes_requests_addressed_to_the_bot():
+    # UAT 2026-11-06: asking the bot for ideas got logged as a wife ask. The
+    # live eval needs examples where the user asks the bot something, and the
+    # right outcome is no notes at all.
+    items = run_eval.load_labeled_set("eval/sample/labeled_notes.json")
+    requests_to_bot = [
+        i for i in items
+        if i["expected_types"] == [] and "ideas" in i["text"].lower()
+    ]
+    assert len(requests_to_bot) >= 2
