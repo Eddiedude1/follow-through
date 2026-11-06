@@ -22,6 +22,14 @@ def _default_telegram_chat_id(monkeypatch):
     monkeypatch.setattr(config, "TELEGRAM_CHAT_ID", "1")
 
 
+@pytest.fixture(autouse=True)
+def _default_timezone(monkeypatch):
+    # config reads FOLLOW_THROUGH_TIMEZONE from the environment/.env, so a
+    # deployed machine (e.g. the Pi) would otherwise change test outcomes.
+    # Tests that care about another timezone set it themselves.
+    monkeypatch.setattr(config, "TIMEZONE", "UTC")
+
+
 class FakeContentBlock:
     def __init__(self, type, **kwargs):
         self.type = type
