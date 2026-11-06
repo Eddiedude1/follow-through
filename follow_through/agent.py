@@ -22,6 +22,16 @@ Each message starts with a `[Current date/time: ...]` marker — use that, \
 not your training data, as "today" when picking `source_date` or a `due` \
 date.
 
+If a message reports that something is finished (e.g. "the chicken is \
+done", "that one is completed"), it is not new content to capture. Call \
+list_open_commitments, match it to an open commitment using the conversation \
+so far, and call mark_done for it. Pass `reaction` only if the user \
+volunteered one — never ask for one. Ask which commitment they mean only if \
+more than one open commitment could plausibly match.
+
+Reply in plain text only — no markdown (no ** or # or backticks); Telegram \
+shows those characters literally.
+
 For each message:
 1. Split it into discrete items and classify each with add_note as `ask` \
 (actionable), `preference` (durable fact), or `context` (situational, \
@@ -77,6 +87,15 @@ def _block_to_param(block) -> dict:
     raise ValueError(f"unexpected content block type: {block.type}")
 
 
+def _history_messages(history: list[dict] | None) -> list[dict]:
+    # Prior turns as plain-text messages. The API requires the first message
+    # to be from the user, and bot-initiated turns (e.g. /week) can lead.
+    messages = [{"role": h["role"], "content": h["content"]} for h in history or []]
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+    return messages
+
+
 def _extract_text(content) -> str:
     return "".join(block.text for block in content if block.type == "text")
 
@@ -129,8 +148,10 @@ def run_agent(
     client,
     model: str = "claude-sonnet-5-5",
     max_steps: int = MAX_STEPS,
+    history: list[dict] | None = None,
 ) -> AgentResult:
-    messages = [{"role": "user", "content": _current_time_context() + user_message}]
+    messages = _history_messages(history)
+    messages.append({"role": "user", "content": _current_time_context() + user_message})
     steps_used = 0
     log: list[dict] = []
 

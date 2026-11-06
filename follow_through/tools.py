@@ -37,7 +37,7 @@ def list_open_commitments(conn) -> dict:
     return {"commitments": commitments}
 
 
-def mark_done(conn, id: int, reaction: str) -> dict:
+def mark_done(conn, id: int, reaction: str | None = None) -> dict:
     open_ids = {c["id"] for c in db.list_open_commitments(conn)}
     if id not in open_ids:
         raise ToolError(f"commitment {id} does not exist or is not open")
@@ -123,14 +123,17 @@ TOOL_SCHEMAS: list[dict] = [
     },
     {
         "name": "mark_done",
-        "description": "Close a commitment with her reaction.",
+        "description": (
+            "Close a commitment. Include her reaction only if the user "
+            "volunteered one; omit it otherwise."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "id": {"type": "integer"},
                 "reaction": {"type": "string"},
             },
-            "required": ["id", "reaction"],
+            "required": ["id"],
             "additionalProperties": False,
         },
         "strict": True,

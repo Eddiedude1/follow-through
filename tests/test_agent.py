@@ -196,3 +196,45 @@ def test_run_agent_grounds_the_model_with_current_date(tmp_db_conn):
     first_message_content = client.calls[0]["messages"][0]["content"]
     assert "the weather was nice" in first_message_content
     assert str(datetime.now(timezone.utc).year) in first_message_content
+
+
+# --- Dogfooding fixes (2026-11-06) -------------------------------------
+
+def test_history_is_sent_before_the_new_message(tmp_db_conn):
+    # "That one is completed" had no referent: run_agent started every call
+    # with only the current message, so the bot's previous reply was invisible.
+    client = FakeAnthropicClient([fake_text_response("ok")])
+    history = [
+        {"role": "user", "content": "/week"},
+        {"role": "assistant", "content": "Idea: Pick up the organic chicken."},
+    ]
+    agent.run_agent(tmp_db_conn, "That one is completed", client, history=history)
+
+    sent = client.calls[0]["messages"]
+    assert sent[0] == {"role": "user", "content": "/week"}
+    assert sent[1] == {"role": "assistant", "content": "Idea: Pick up the organic chicken."}
+    assert sent[-1]["role"] == "user"
+    assert sent[-1]["content"].endswith("That one is completed")
+    assert "[Current date/time:" in sent[-1]["content"]
+
+
+def test_history_starting_with_assistant_turn_still_starts_with_user(tmp_db_conn):
+    # /week replies are bot-initiated, so history can open with an assistant
+    # turn; the API requires the first message to be from the user.
+    client = FakeAnthropicClient([fake_text_response("ok")])
+    history = [{"role": "assistant", "content": "Due this week: ..."}]
+    agent.run_agent(tmp_db_conn, "done", client, history=history)
+
+    assert client.calls[0]["messages"][0]["role"] == "user"
+
+
+def test_system_prompt_covers_reporting_a_commitment_done():
+    # "Organic chicken is done" was filed as a context note because the
+    # prompt only described capturing, never completing.
+    assert "mark_done" in agent.SYSTEM_PROMPT
+    assert "list_open_commitments" in agent.SYSTEM_PROMPT
+
+
+def test_system_prompt_asks_for_plain_text_replies():
+    # Telegram showed literal ** because the model replied in markdown.
+    assert "plain text" in agent.SYSTEM_PROMPT.lower()

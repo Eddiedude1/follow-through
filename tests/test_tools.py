@@ -84,3 +84,19 @@ def test_tool_schemas_cover_all_handlers():
         "add_note", "search_notes", "create_commitment",
         "list_open_commitments", "mark_done", "schedule_reminder",
     }
+
+
+# --- Dogfooding fixes (2026-11-06) -------------------------------------
+
+def test_mark_done_without_reaction_closes_commitment(tmp_db_conn):
+    # The bot asked for "her reaction" when the user only said "done".
+    note_id = db.insert_note(tmp_db_conn, "x", "ask", "2026-10-30")
+    cid = db.insert_commitment(tmp_db_conn, note_id, "x", "2026-11-02")
+    tools.mark_done(tmp_db_conn, cid)
+    assert db.list_open_commitments(tmp_db_conn) == []
+
+
+def test_mark_done_schema_does_not_require_reaction():
+    schema = next(s for s in tools.TOOL_SCHEMAS if s["name"] == "mark_done")
+    assert schema["input_schema"]["required"] == ["id"]
+    assert "reaction" in schema["input_schema"]["properties"]

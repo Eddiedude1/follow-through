@@ -220,3 +220,105 @@ def test_build_app_registers_an_error_handler(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "fake-key-for-test")
     app = bot.build_app()
     assert len(app.error_handlers) > 0
+
+
+# --- Dogfooding fixes (2026-11-06) -------------------------------------
+
+from datetime import date, timedelta
+
+from tests.conftest import FakeAnthropicClient
+
+
+def _first_text(message_content):
+    return message_content if isinstance(message_content, str) else ""
+
+
+@pytest.mark.asyncio
+async def test_second_message_sees_the_first_exchange(tmp_db_conn):
+    # "That one is completed" failed because each message was handled in
+    # isolation. The agent must see the previous turns.
+    client = FakeAnthropicClient([
+        fake_text_response("Noted the chicken."),
+        fake_text_response("Marked it done."),
+    ])
+    context = FakeContext(conn=tmp_db_conn, client=client)
+
+    await bot.handle_message(FakeUpdate("Bought the chicken"), context)
+    await bot.handle_message(FakeUpdate("That one is completed"), context)
+
+    second_call = client.calls[1]["messages"]
+    contents = [_first_text(m["content"]) for m in second_call]
+    assert any("Bought the chicken" in c for c in contents)
+    assert any(c == "Noted the chicken." for c in contents)
+    assert second_call[-1]["content"].endswith("That one is completed")
+
+
+@pytest.mark.asyncio
+async def test_week_output_and_idea_are_remembered_for_the_next_message(
+    tmp_db_conn, monkeypatch
+):
+    # The screenshot: /week showed an "Idea: ...", then the user replied
+    # "That one is completed". The Idea never reached the agent.
+    monkeypatch.setattr(
+        agent, "get_proactive_suggestion",
+        lambda conn, client: "Pick up the organic chicken breast.",
+    )
+    client = FakeAnthropicClient([fake_text_response("Done, marked.")])
+    context = FakeContext(conn=tmp_db_conn, client=client)
+
+    await bot.handle_week(FakeUpdate(), context)
+    await bot.handle_message(FakeUpdate("That one is completed"), context)
+
+    sent = client.calls[0]["messages"]
+    flattened = " ".join(_first_text(m["content"]) for m in sent)
+    assert "Pick up the organic chicken breast." in flattened
+    assert sent[0]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_history_is_capped(tmp_db_conn):
+    client = FakeAnthropicClient([fake_text_response("ok")] * 30)
+    context = FakeContext(conn=tmp_db_conn, client=client)
+    for i in range(30):
+        await bot.handle_message(FakeUpdate(f"message {i}"), context)
+    assert len(context.bot_data["history"]) <= bot.HISTORY_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_markdown_asterisks_are_not_sent_to_telegram(tmp_db_conn):
+    client = FakeAnthropicClient([
+        fake_text_response("- **#5:** Pick up chicken\n- **#3:** Call Clark's"),
+    ])
+    context = FakeContext(conn=tmp_db_conn, client=client)
+    update = FakeUpdate("which are open?")
+
+    await bot.handle_message(update, context)
+
+    assert "**" not in update.message.replies[0]
+    assert "#5: Pick up chicken" in update.message.replies[0]
+
+
+@pytest.mark.asyncio
+async def test_week_shows_ids_and_flags_overdue(tmp_db_conn, monkeypatch):
+    monkeypatch.setattr(agent, "get_proactive_suggestion", lambda conn, client: None)
+    note_id = db.insert_note(tmp_db_conn, "x", "ask", "2026-10-30")
+    overdue_id = db.insert_commitment(tmp_db_conn, note_id, "old thing", "2000-01-01")
+    soon = (date.today() + timedelta(days=3)).isoformat()
+    soon_id = db.insert_commitment(tmp_db_conn, note_id, "soon thing", soon)
+
+    update = FakeUpdate()
+    await bot.handle_week(update, FakeContext(conn=tmp_db_conn))
+
+    text = update.message.replies[0]
+    old_line = next(l for l in text.splitlines() if "old thing" in l)
+    soon_line = next(l for l in text.splitlines() if "soon thing" in l)
+    assert f"#{overdue_id}" in old_line and "overdue" in old_line.lower()
+    assert f"#{soon_id}" in soon_line and "overdue" not in soon_line.lower()
+
+
+@pytest.mark.asyncio
+async def test_open_shows_ids(tmp_db_conn, fake_update, fake_context):
+    note_id = db.insert_note(tmp_db_conn, "x", "ask", "2026-10-30")
+    cid = db.insert_commitment(tmp_db_conn, note_id, "organize the garage", "2999-01-01")
+    await bot.handle_open(fake_update, fake_context)
+    assert f"#{cid}" in fake_update.message.replies[0]

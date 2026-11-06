@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import anthropic
 import telegram
@@ -11,6 +12,10 @@ from follow_through import agent, config, db
 
 logger = logging.getLogger(__name__)
 
+# How many recent chat entries (user + bot turns) the agent gets as context,
+# so replies like "that one is completed" can be resolved.
+HISTORY_LIMIT = 10
+
 
 def _is_authorized_chat(chat_id) -> bool:
     configured = config.TELEGRAM_CHAT_ID
@@ -20,7 +25,25 @@ def _is_authorized_chat(chat_id) -> bool:
 
 
 def _reply_text_or_fallback(text: str) -> str:
-    return text if text and text.strip() else "(no response text)"
+    if not text or not text.strip():
+        return "(no response text)"
+    # Replies go out as plain text, so markdown bold shows up as literal **.
+    return text.replace("**", "")
+
+
+def _remember(context, role: str, text: str) -> None:
+    history = context.bot_data.setdefault("history", [])
+    history.append({"role": role, "content": text})
+    del history[:-HISTORY_LIMIT]
+
+
+def _today() -> date:
+    return datetime.now(ZoneInfo(config.TIMEZONE)).date()
+
+
+def _format_commitment_line(commitment: dict, today: date) -> str:
+    overdue = ", overdue" if commitment["due"] < today.isoformat() else ""
+    return f"- #{commitment['id']} {commitment['act']} (due {commitment['due']}{overdue})"
 
 
 def _build_commitment_keyboard(commitment_id: int) -> InlineKeyboardMarkup:
@@ -91,11 +114,17 @@ async def handle_message(update, context) -> None:
 
     client = context.bot_data["client"]
     before_ids = {c["id"] for c in db.list_open_commitments(conn)}
-    result = await asyncio.to_thread(agent.run_agent, conn, update.message.text, client)
+    history = list(context.bot_data.get("history", []))
+    result = await asyncio.to_thread(
+        agent.run_agent, conn, update.message.text, client, history=history
+    )
     after = db.list_open_commitments(conn)
     new_commitments = [c for c in after if c["id"] not in before_ids]
 
-    await update.message.reply_text(_reply_text_or_fallback(result.final_text))
+    reply = _reply_text_or_fallback(result.final_text)
+    _remember(context, "user", update.message.text)
+    _remember(context, "assistant", reply)
+    await update.message.reply_text(reply)
     for commitment in new_commitments:
         await update.message.reply_text(
             f"{commitment['act']} — due {commitment['due']}",
@@ -112,9 +141,10 @@ async def handle_open(update, context) -> None:
     if not commitments:
         await update.message.reply_text("Nothing open right now.")
         return
+    today = _today()
     for commitment in commitments:
         await update.message.reply_text(
-            f"- {commitment['act']} (due {commitment['due']})",
+            _format_commitment_line(commitment, today),
             reply_markup=_build_done_dismiss_keyboard(commitment["id"]),
         )
 
@@ -126,18 +156,27 @@ async def handle_week(update, context) -> None:
     conn = context.bot_data["conn"]
     client = context.bot_data.get("client")
 
-    cutoff = (datetime.now(timezone.utc) + timedelta(days=7)).date().isoformat()
+    today = _today()
+    cutoff = (today + timedelta(days=7)).isoformat()
     due_this_week = [c for c in db.list_open_commitments(conn) if c["due"] <= cutoff]
 
     if due_this_week:
-        lines = [f"- {c['act']} (due {c['due']})" for c in due_this_week]
-        await update.message.reply_text("Due this week:\n" + "\n".join(lines))
+        lines = [_format_commitment_line(c, today) for c in due_this_week]
+        week_text = "Due this week:\n" + "\n".join(lines)
     else:
-        await update.message.reply_text("Nothing due this week.")
+        week_text = "Nothing due this week."
+    await update.message.reply_text(week_text)
+    shown = [week_text]
 
     suggestion = await asyncio.to_thread(agent.get_proactive_suggestion, conn, client)
     if suggestion is not None:
-        await update.message.reply_text(f"Idea: {suggestion}")
+        idea_text = f"Idea: {suggestion}"
+        await update.message.reply_text(idea_text)
+        shown.append(idea_text)
+
+    # Remember what the user saw, so a follow-up like "that one is done" has a referent.
+    _remember(context, "user", "/week")
+    _remember(context, "assistant", "\n\n".join(shown))
 
 
 async def _handle_confirm(conn, query, commitment_id, context) -> None:

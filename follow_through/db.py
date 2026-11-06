@@ -96,7 +96,9 @@ def dismiss_commitment(conn: sqlite3.Connection, commitment_id: int) -> None:
     conn.commit()
 
 
-def mark_commitment_done(conn: sqlite3.Connection, commitment_id: int, reaction: str) -> None:
+def mark_commitment_done(
+    conn: sqlite3.Connection, commitment_id: int, reaction: str | None = None
+) -> None:
     conn.execute(
         """
         UPDATE commitments
