@@ -322,3 +322,73 @@ async def test_open_shows_ids(tmp_db_conn, fake_update, fake_context):
     cid = db.insert_commitment(tmp_db_conn, note_id, "organize the garage", "2999-01-01")
     await bot.handle_open(fake_update, fake_context)
     assert f"#{cid}" in fake_update.message.replies[0]
+
+
+# --- /help and the Telegram command menu (2026-11-06) -------------------
+
+from telegram.ext import CommandHandler
+
+
+@pytest.mark.asyncio
+async def test_help_lists_every_command(fake_update, fake_context):
+    await bot.handle_help(fake_update, fake_context)
+    text = fake_update.message.replies[0]
+    for name, _description in bot.BOT_COMMANDS:
+        assert f"/{name}" in text
+
+
+@pytest.mark.asyncio
+async def test_help_ignores_other_chats(tmp_db_conn):
+    update = FakeUpdate()
+    update.effective_chat = FakeChat(id=999)
+    await bot.handle_help(update, FakeContext(conn=tmp_db_conn))
+    assert update.message.replies == []
+
+
+def test_command_menu_matches_registered_command_handlers(tmp_path, monkeypatch):
+    # The menu Telegram shows must not drift from what the bot handles.
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "fresh.db"))
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123456:FAKE-TOKEN-FOR-TEST")
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "fake-key-for-test")
+    app = bot.build_app()
+    handled = {
+        command
+        for group in app.handlers.values()
+        for handler in group
+        if isinstance(handler, CommandHandler)
+        for command in handler.commands
+    }
+    assert handled == {name for name, _ in bot.BOT_COMMANDS}
+    assert app.post_init is bot._register_commands
+
+
+class _RecordingBot:
+    def __init__(self, error=None):
+        self.error = error
+        self.commands = None
+
+    async def set_my_commands(self, commands):
+        if self.error:
+            raise self.error
+        self.commands = commands
+
+
+class _FakeApplication:
+    def __init__(self, bot_obj):
+        self.bot = bot_obj
+
+
+@pytest.mark.asyncio
+async def test_register_commands_publishes_the_menu():
+    recorder = _RecordingBot()
+    await bot._register_commands(_FakeApplication(recorder))
+    assert [(c.command, c.description) for c in recorder.commands] == list(bot.BOT_COMMANDS)
+
+
+@pytest.mark.asyncio
+async def test_register_commands_failure_does_not_stop_the_bot(caplog):
+    # The menu is a convenience; a network blip at startup must not crash the bot.
+    recorder = _RecordingBot(error=RuntimeError("telegram unreachable"))
+    with caplog.at_level(logging.WARNING):
+        await bot._register_commands(_FakeApplication(recorder))
+    assert "telegram unreachable" in caplog.text

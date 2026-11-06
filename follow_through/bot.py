@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 # so replies like "that one is completed" can be resolved.
 HISTORY_LIMIT = 10
 
+# Single source of truth for the commands: drives /help and the menu Telegram
+# shows when you type "/". A test keeps this in step with the registered handlers.
+BOT_COMMANDS = [
+    ("open", "List open commitments"),
+    ("week", "What's due this week"),
+    ("help", "Show available commands"),
+]
+
 
 def _is_authorized_chat(chat_id) -> bool:
     configured = config.TELEGRAM_CHAT_ID
@@ -132,6 +140,19 @@ async def handle_message(update, context) -> None:
         )
 
 
+async def handle_help(update, context) -> None:
+    if not _is_authorized_chat(update.effective_chat.id):
+        return
+
+    lines = [f"/{name} - {description}" for name, description in BOT_COMMANDS]
+    await update.message.reply_text(
+        "Commands:\n"
+        + "\n".join(lines)
+        + "\n\nOr just send a message: tell me what she mentioned, "
+        "say when something is done, or ask me for ideas."
+    )
+
+
 async def handle_open(update, context) -> None:
     if not _is_authorized_chat(update.effective_chat.id):
         return
@@ -234,6 +255,17 @@ async def handle_error(update, context) -> None:
             pass
 
 
+async def _register_commands(application) -> None:
+    # Populates the "/" menu in Telegram. A convenience only, so never let a
+    # failure here (e.g. a network blip at startup) stop the bot.
+    try:
+        await application.bot.set_my_commands(
+            [telegram.BotCommand(name, description) for name, description in BOT_COMMANDS]
+        )
+    except Exception as e:
+        logger.warning("Could not register the Telegram command menu: %s", e)
+
+
 def send_reminder(reminder: dict) -> None:
     async def _send():
         bot_client = telegram.Bot(token=config.TELEGRAM_BOT_TOKEN)
@@ -258,11 +290,13 @@ def build_app():
         .get_updates_read_timeout(20.0)
         .get_updates_write_timeout(20.0)
         .get_updates_pool_timeout(5.0)
+        .post_init(_register_commands)
         .build()
     )
     app.bot_data["conn"] = conn
     app.bot_data["client"] = client
 
+    app.add_handler(CommandHandler("help", handle_help))
     app.add_handler(CommandHandler("open", handle_open))
     app.add_handler(CommandHandler("week", handle_week))
     app.add_handler(CallbackQueryHandler(handle_button))
