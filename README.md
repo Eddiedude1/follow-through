@@ -22,65 +22,9 @@ How the bot routes an incoming message:
 
 ![Bot request routing: auth gate, router, direct handlers vs. the Claude agent loop](docs/architecture/bot-routing.png)
 
-The diagrams are editable HTML in [`docs/architecture/`](docs/architecture/) (`system-overview.html`, `bot-routing.html`); the PNGs above are exported from them. The full flow, including every decision point, is below.
+The diagrams are editable HTML in [`docs/architecture/`](docs/architecture/) (`system-overview.html`, `bot-routing.html`); the PNGs above are exported from them.
 
-```mermaid
-flowchart TB
-    Wife["Wife says something\n(in person)"] --> User["You type it into Telegram"]
-    User -->|"text message"| TGAPI["Telegram Bot API"]
-
-    subgraph Pi["Raspberry Pi — 3 independent systemd services"]
-        subgraph BotSvc["follow-through-bot.service"]
-            Poll["Long-poll getUpdates\n(python-telegram-bot)"]
-            AuthCheck{"Chat ID matches\nTELEGRAM_CHAT_ID?"}
-            StateCheck{"Mid-conversation?\n(editing due date,\nlogging a reaction)"}
-            ToThread["asyncio.to_thread\n(offload so Telegram's\nconnection doesn't freeze)"]
-            Agent["agent.run_agent()"]
-            Reply["Reply + button card\n(Confirm / Edit due /\nDismiss / Done)"]
-        end
-
-        subgraph SchedSvc["follow-through-scheduler.service"]
-            SchedLoop["Poll every N seconds:\nany reminder due\nand not yet sent?"]
-            SendRem["Send reminder\nvia Telegram"]
-        end
-
-        subgraph BackupSvc["follow-through-backup.service"]
-            BackupLoop["Every 24h:\ncopy DB to local\nbackups folder"]
-        end
-
-        Cron["cron @ 3am:\nrclone sync"]
-    end
-
-    DB[("SQLite\nnotes / commitments\n/ reminders")]
-    Claude["Anthropic API\n(Claude + tool use)"]
-    GDrive["Google Drive\n(rclone remote)"]
-
-    TGAPI --> Poll
-    Poll --> AuthCheck
-    AuthCheck -->|no, ignore| Poll
-    AuthCheck -->|yes| StateCheck
-    StateCheck -->|yes: update commitment directly| DB
-    StateCheck -->|no: new message| ToThread
-    ToThread --> Agent
-
-    Agent <-->|"messages.create()\ntool_use / tool_result loop"| Claude
-    Agent -->|"add_note, create_commitment,\nsearch_notes, schedule_reminder"| DB
-
-    Agent --> Reply
-    Reply --> TGAPI
-    TGAPI --> User
-
-    SchedLoop --> DB
-    DB --> SendRem
-    SendRem --> TGAPI
-
-    BackupLoop --> DB
-    BackupLoop --> LocalBak[("local backups\nfolder")]
-    Cron --> LocalBak
-    Cron --> GDrive
-```
-
-A few things worth knowing about this picture:
+A few things worth knowing about this architecture:
 
 - **The bot itself never "thinks."** It's a thin adapter: receive message → check it's really you → hand the text to `agent.run_agent()` → send back whatever Claude decided to do. All the judgment (is this actionable? what's the first concrete step? when should the reminder fire?) happens inside the Claude tool-use loop, not in `bot.py`.
 - **`asyncio.to_thread` matters.** Without it, the (blocking) call out to Claude's API would freeze the bot's connection to Telegram itself — this was a real bug caught deploying to a Raspberry Pi 3, where the API round trip was slow enough to time out Telegram's own long-poll connection.
