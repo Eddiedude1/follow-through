@@ -16,6 +16,14 @@ Each revision gets its own dated file in `docs/superpowers/specs/`, so the desig
 
 ### Architecture
 
+![System overview: three services sharing one SQLite database](docs/architecture/system-overview.png)
+
+How the bot routes an incoming message:
+
+![Bot request routing: auth gate, router, direct handlers vs. the Claude agent loop](docs/architecture/bot-routing.png)
+
+The diagrams are editable HTML in [`docs/architecture/`](docs/architecture/) (`system-overview.html`, `bot-routing.html`); the PNGs above are exported from them. The full flow, including every decision point, is below.
+
 ```mermaid
 flowchart TB
     Wife["Wife says something\n(in person)"] --> User["You type it into Telegram"]

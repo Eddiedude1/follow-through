@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot request routing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 0.75rem;
+    }
+    .note {
+      font-family: var(--font-sans);
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: var(--color-muted);
+      max-width: 62ch;
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture detail · bot.py</p>
+    <h1>Where a Telegram message goes</h1>
+    <p class="note">Only free text and the "done" reaction reach Claude. Commands, button taps and due-date edits are handled directly, with no model call.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 464" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bot-routing-title bot-routing-desc">
+        <title id="bot-routing-title">Bot request routing</title>
+        <desc id="bot-routing-desc">A Telegram update passes an auth gate and a router, which sends commands and edits to direct handlers and free text to the Claude agent loop, both backed by SQLite.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+        <!-- Arrows -->
+        <line x1="152" y1="208" x2="200" y2="208" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="352" y1="208" x2="400" y2="208" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="552" y1="208" x2="656" y2="208" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="572" y="188" width="64" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="604" y="197" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">TO_THREAD</text>
+        <line x1="476" y1="240" x2="476" y2="320" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="492" y="274" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="283" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO MODEL</text>
+        <line x1="552" y1="352" x2="656" y2="352" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="736" y1="176" x2="736" y2="112" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <rect x="744" y="138" width="80" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="784" y="147" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">TOOL-USE LOOP</text>
+        <line x1="736" y1="240" x2="736" y2="320" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="744" y="274" width="40" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="764" y="283" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">TOOLS</text>
+        <line x1="816" y1="208" x2="864" y2="208" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- Nodes -->
+        <rect x="24" y="176" width="128" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="176" width="128" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="88" y="204" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Telegram update</text>
+        <text x="88" y="220" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">text · command · tap</text>
+        <rect x="200" y="176" width="152" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="200" y="176" width="152" height="64" rx="6" fill="rgba(191,69,32,0.05)" stroke="rgba(191,69,32,0.50)" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="276" y="204" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Auth gate</text>
+        <text x="276" y="220" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">chat_id else ignore</text>
+        <rect x="400" y="176" width="152" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="400" y="176" width="152" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="476" y="204" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Router</text>
+        <text x="476" y="220" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">command / button / state</text>
+        <rect x="656" y="176" width="160" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="656" y="176" width="160" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="736" y="204" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Agent loop</text>
+        <text x="736" y="220" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">agent.py · tool-use loop</text>
+        <rect x="400" y="320" width="152" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="400" y="320" width="152" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="476" y="348" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Direct handlers</text>
+        <text x="476" y="364" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">no model call</text>
+        <rect x="656" y="48" width="160" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="656" y="48" width="160" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="736" y="76" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Anthropic API</text>
+        <text x="736" y="92" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Claude · tool use</text>
+        <rect x="656" y="320" width="160" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="656" y="320" width="160" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <text x="736" y="348" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">SQLite</text>
+        <text x="736" y="364" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">shared with scheduler</text>
+        <rect x="864" y="176" width="104" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="864" y="176" width="104" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="916" y="204" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Reply</text>
+        <text x="916" y="220" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">text + buttons</text>
+
+        <!-- Legend -->
+        <line x1="30" y1="408" x2="970" y2="408" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="30" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">LEGEND</text>
+        <rect x="96" y="419" width="16" height="10" rx="2" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="120" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">Telegram in</text>
+        <rect x="212" y="419" width="16" height="10" rx="2" fill="rgba(191,69,32,0.05)" stroke="rgba(191,69,32,0.50)" stroke-width="1" stroke-dasharray="4,4"/>
+        <text x="236" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">Guard</text>
+        <rect x="300" y="419" width="16" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="324" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">Bot code</text>
+        <rect x="396" y="419" width="16" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="420" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">Model loop</text>
+        <rect x="512" y="419" width="16" height="10" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="536" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">External</text>
+        <rect x="616" y="419" width="16" height="10" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <text x="640" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">Store</text>
+        <line x1="708" y1="424" x2="732" y2="424" stroke="#4f5d75" stroke-width="1.2"/>
+        <text x="740" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">Internal</text>
+        <line x1="816" y1="424" x2="840" y2="424" stroke="#2e5aa8" stroke-width="1.2"/>
+        <text x="848" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace">API call</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
