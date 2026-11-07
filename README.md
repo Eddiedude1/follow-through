@@ -88,9 +88,20 @@ The app doesn't expose anything to the internet — it reaches out to Telegram, 
 - **Privacy despite being a "public" bot:** Telegram usernames are searchable — anyone who types the bot's exact username into Telegram's search (the same way you'd find `@BotFather`) could open a chat with it and send it a message. That gets them nothing: every handler in `bot.py` (`handle_message`, `handle_open`, `handle_week`, `handle_button`) starts with `_is_authorized_chat()`, which checks the sender's chat ID against `TELEGRAM_CHAT_ID` in `.env` and returns immediately on a mismatch — no reply, no database read, no database write, nothing logged about what they sent. That one environment variable is the entire access-control model, and it fully neutralizes the bot being technically findable.
 
   The thing actually worth protecting is the **bot token** itself, not the username. Whoever holds the token can call Telegram's API *as* that bot — including reading incoming messages via `getUpdates` before the real app consumes them. Treat it like any other secret in `.env`: never paste it into a chat, a commit, or a log; if it's ever exposed, revoke and reissue it via `@BotFather` (`/mybots` → your bot → API Token → Revoke current token).
-- **Commands vs. free text:** `/open`, `/week` and `/help` are registered as explicit `CommandHandler`s (the list lives in `bot.BOT_COMMANDS`, which also populates Telegram's "/" menu at startup); everything else (the actual notes about your wife) flows through a single `MessageHandler` into `agent.run_agent()`. Button taps (Confirm/Edit due/Dismiss/Done) come back as a separate `CallbackQueryHandler`, not as text messages.
+- **Commands vs. free text:** `/open`, `/week`, `/feedback` and `/help` are registered as explicit `CommandHandler`s (the list lives in `bot.BOT_COMMANDS`, which also populates Telegram's "/" menu at startup); everything else (the actual notes about your wife) flows through a single `MessageHandler` into `agent.run_agent()`. Button taps (Confirm/Edit due/Dismiss/Done) come back as a separate `CallbackQueryHandler`, not as text messages.
 
 Full setup steps (BotFather walkthrough, finding your chat ID) are in [`deploy/README.md`](deploy/README.md#6-configure-secrets).
+
+## Collecting feedback while dogfooding
+
+From your phone, reply to the bot message that felt wrong with `/feedback` and a few words (or send `/feedback <what felt off>`). The bot answers `Logged #N`. Each flag is stored in the `feedback` table with your note, the message you replied to, the bot's last 10 turns of conversation, and the git version that was running. `/feedback` never calls the model and is not added to the chat history. The recent turns are kept in memory, so they are empty right after a bot restart.
+
+At your computer, on the Pi (from the project directory):
+
+```bash
+uv run python -m follow_through.feedback list                    # new flags, with their context (read-only)
+uv run python -m follow_through.feedback address <id> <commit>   # mark one addressed by a commit
+```
 
 ## Running it
 

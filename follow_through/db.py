@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 
@@ -37,6 +38,17 @@ def init_schema(conn: sqlite3.Connection) -> None:
             sent INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             UNIQUE(commitment_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note TEXT NOT NULL,
+            replied_to_text TEXT NOT NULL DEFAULT '',
+            recent_turns TEXT NOT NULL DEFAULT '[]',
+            code_version TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'addressed')),
+            addressed_in TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         """
     )
@@ -157,3 +169,43 @@ def update_reminder_when(conn: sqlite3.Connection, reminder_id: int, when_ts: st
         (when_ts, reminder_id),
     )
     conn.commit()
+
+
+def insert_feedback(
+    conn: sqlite3.Connection,
+    note: str,
+    replied_to_text: str,
+    recent_turns: list[dict],
+    code_version: str,
+) -> int:
+    cursor = conn.execute(
+        """
+        INSERT INTO feedback (note, replied_to_text, recent_turns, code_version)
+        VALUES (?, ?, ?, ?)
+        """,
+        (note, replied_to_text, json.dumps(recent_turns), code_version),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def list_feedback(conn: sqlite3.Connection, status: str = "new") -> list[dict]:
+    rows = conn.execute(
+        "SELECT * FROM feedback WHERE status = ? ORDER BY id ASC", (status,)
+    ).fetchall()
+    flags = [_row_to_dict(r) for r in rows]
+    for flag in flags:
+        flag["recent_turns"] = json.loads(flag["recent_turns"])
+    return flags
+
+
+def mark_feedback_addressed(conn: sqlite3.Connection, feedback_id: int, commit: str) -> bool:
+    cursor = conn.execute(
+        """
+        UPDATE feedback SET status = 'addressed', addressed_in = ?
+        WHERE id = ? AND status = 'new'
+        """,
+        (commit, feedback_id),
+    )
+    conn.commit()
+    return cursor.rowcount == 1

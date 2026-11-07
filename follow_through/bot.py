@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import subprocess
+from pathlib import Path
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -21,6 +23,7 @@ HISTORY_LIMIT = 10
 BOT_COMMANDS = [
     ("open", "List open commitments"),
     ("week", "What's due this week"),
+    ("feedback", "Flag something that felt off (reply to a message)"),
     ("help", "Show available commands"),
 ]
 
@@ -138,6 +141,50 @@ async def handle_message(update, context) -> None:
             f"{commitment['act']} — due {commitment['due']}",
             reply_markup=_build_commitment_keyboard(commitment["id"]),
         )
+
+
+def _git_version() -> str:
+    # Which code produced a given reply; saved with every feedback flag.
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        return result.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+async def handle_feedback(update, context) -> None:
+    if not _is_authorized_chat(update.effective_chat.id):
+        return
+
+    parts = (update.message.text or "").split(maxsplit=1)
+    note = parts[1].strip() if len(parts) > 1 else ""
+    replied_to = update.message.reply_to_message
+    replied_to_text = (replied_to.text or "") if replied_to is not None else ""
+
+    if not note and not replied_to_text:
+        await update.message.reply_text(
+            "Reply to a message with /feedback and a few words, "
+            "or send /feedback followed by what felt off."
+        )
+        return
+
+    # Deliberately no model call and no entry in the chat history: flags are
+    # about the conversation, so they must not become part of it.
+    flag_id = db.insert_feedback(
+        context.bot_data["conn"],
+        note,
+        replied_to_text,
+        list(context.bot_data.get("history", [])),
+        context.bot_data.get("code_version", "unknown"),
+    )
+    await update.message.reply_text(f"Logged #{flag_id}")
 
 
 async def handle_help(update, context) -> None:
@@ -295,7 +342,9 @@ def build_app():
     )
     app.bot_data["conn"] = conn
     app.bot_data["client"] = client
+    app.bot_data["code_version"] = _git_version()
 
+    app.add_handler(CommandHandler("feedback", handle_feedback))
     app.add_handler(CommandHandler("help", handle_help))
     app.add_handler(CommandHandler("open", handle_open))
     app.add_handler(CommandHandler("week", handle_week))

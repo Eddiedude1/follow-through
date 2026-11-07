@@ -392,3 +392,109 @@ async def test_register_commands_failure_does_not_stop_the_bot(caplog):
     with caplog.at_level(logging.WARNING):
         await bot._register_commands(_FakeApplication(recorder))
     assert "telegram unreachable" in caplog.text
+
+
+# --- /feedback (2026-11-06) ----------------------------------------------
+
+import subprocess
+
+from tests.conftest import FakeTelegramMessage
+
+
+def _feedback_context(conn, history=None, code_version="abc1234"):
+    context = FakeContext(conn=conn, client=FakeAnthropicClient([]))
+    context.bot_data["code_version"] = code_version
+    if history is not None:
+        context.bot_data["history"] = history
+    return context
+
+
+@pytest.mark.asyncio
+async def test_feedback_saves_note_reply_context_and_version(tmp_db_conn):
+    history = [{"role": "user", "content": "/week"}, {"role": "assistant", "content": "Due..."}]
+    context = _feedback_context(tmp_db_conn, history)
+    update = FakeUpdate("/feedback this was the wrong item")
+    update.message.reply_to_message = FakeTelegramMessage("Idea: pick up the chicken")
+
+    await bot.handle_feedback(update, context)
+
+    [flag] = db.list_feedback(tmp_db_conn)
+    assert flag["note"] == "this was the wrong item"
+    assert flag["replied_to_text"] == "Idea: pick up the chicken"
+    assert flag["recent_turns"] == history
+    assert flag["code_version"] == "abc1234"
+    assert update.message.replies == [f"Logged #{flag['id']}"]
+
+
+@pytest.mark.asyncio
+async def test_feedback_without_a_reply_still_saves_with_recent_turns(tmp_db_conn):
+    history = [{"role": "user", "content": "hi"}]
+    context = _feedback_context(tmp_db_conn, history)
+    update = FakeUpdate("/feedback replies feel slow")
+
+    await bot.handle_feedback(update, context)
+
+    [flag] = db.list_feedback(tmp_db_conn)
+    assert flag["note"] == "replies feel slow"
+    assert flag["replied_to_text"] == ""
+    assert flag["recent_turns"] == history
+
+
+@pytest.mark.asyncio
+async def test_feedback_reply_with_no_note_still_saves(tmp_db_conn):
+    # The flagged message is itself the information.
+    update = FakeUpdate("/feedback")
+    update.message.reply_to_message = FakeTelegramMessage("some bot reply")
+    await bot.handle_feedback(update, _feedback_context(tmp_db_conn))
+    [flag] = db.list_feedback(tmp_db_conn)
+    assert flag["note"] == "" and flag["replied_to_text"] == "some bot reply"
+
+
+@pytest.mark.asyncio
+async def test_feedback_with_no_note_and_no_reply_shows_usage_and_saves_nothing(tmp_db_conn):
+    update = FakeUpdate("/feedback")
+    await bot.handle_feedback(update, _feedback_context(tmp_db_conn))
+    assert db.list_feedback(tmp_db_conn) == []
+    assert "/feedback" in update.message.replies[0]
+
+
+@pytest.mark.asyncio
+async def test_feedback_accepts_the_botname_form_and_multiline_notes(tmp_db_conn):
+    update = FakeUpdate("/feedback@follow_through_bot line one\nline two")
+    await bot.handle_feedback(update, _feedback_context(tmp_db_conn))
+    [flag] = db.list_feedback(tmp_db_conn)
+    assert flag["note"] == "line one\nline two"
+
+
+@pytest.mark.asyncio
+async def test_feedback_ignores_other_chats(tmp_db_conn):
+    update = FakeUpdate("/feedback hello")
+    update.effective_chat = FakeChat(id=999)
+    await bot.handle_feedback(update, _feedback_context(tmp_db_conn))
+    assert db.list_feedback(tmp_db_conn) == []
+    assert update.message.replies == []
+
+
+@pytest.mark.asyncio
+async def test_feedback_never_calls_the_model_or_pollutes_history(tmp_db_conn):
+    client = FakeAnthropicClient([])
+    context = FakeContext(conn=tmp_db_conn, client=client)
+    context.bot_data["history"] = []
+    await bot.handle_feedback(FakeUpdate("/feedback hello"), context)
+    assert client.calls == []
+    assert context.bot_data["history"] == []
+
+
+def test_git_version_falls_back_to_unknown(monkeypatch):
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("git")
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert bot._git_version() == "unknown"
+
+
+def test_build_app_records_the_code_version(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "fresh.db"))
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123456:FAKE-TOKEN-FOR-TEST")
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "fake-key-for-test")
+    monkeypatch.setattr(bot, "_git_version", lambda: "abc1234")
+    assert bot.build_app().bot_data["code_version"] == "abc1234"

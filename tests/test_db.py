@@ -76,3 +76,35 @@ def test_update_reminder_when(tmp_db_conn):
     db.update_reminder_when(tmp_db_conn, rid, "2026-11-05T09:00:00")
     reminder = db.get_unsent_reminder_for_commitment(tmp_db_conn, cid)
     assert reminder["when_ts"] == "2026-11-05T09:00:00"
+
+
+# --- Feedback flags (2026-11-06) ----------------------------------------
+
+def test_feedback_round_trips_with_context(tmp_db_conn):
+    turns = [{"role": "user", "content": "/week"}, {"role": "assistant", "content": "Due..."}]
+    fid = db.insert_feedback(
+        tmp_db_conn, "wrong item", "Idea: pick up chicken", turns, "abc1234"
+    )
+    [flag] = db.list_feedback(tmp_db_conn)
+    assert flag["id"] == fid
+    assert flag["note"] == "wrong item"
+    assert flag["replied_to_text"] == "Idea: pick up chicken"
+    assert flag["recent_turns"] == turns
+    assert flag["code_version"] == "abc1234"
+    assert flag["status"] == "new"
+    assert flag["created_at"]
+
+
+def test_mark_feedback_addressed_records_commit_and_hides_it(tmp_db_conn):
+    fid = db.insert_feedback(tmp_db_conn, "n", "", [], "abc1234")
+    assert db.mark_feedback_addressed(tmp_db_conn, fid, "def5678") is True
+    assert db.list_feedback(tmp_db_conn) == []
+    [flag] = db.list_feedback(tmp_db_conn, status="addressed")
+    assert flag["addressed_in"] == "def5678"
+
+
+def test_mark_feedback_addressed_rejects_unknown_or_already_addressed(tmp_db_conn):
+    fid = db.insert_feedback(tmp_db_conn, "n", "", [], "abc1234")
+    assert db.mark_feedback_addressed(tmp_db_conn, 999, "def5678") is False
+    assert db.mark_feedback_addressed(tmp_db_conn, fid, "def5678") is True
+    assert db.mark_feedback_addressed(tmp_db_conn, fid, "zzz") is False

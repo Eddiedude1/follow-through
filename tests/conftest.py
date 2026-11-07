@@ -76,8 +76,9 @@ class FakeAnthropicClient:
 
 
 class FakeTelegramMessage:
-    def __init__(self, text=""):
+    def __init__(self, text="", reply_to_message=None):
         self.text = text
+        self.reply_to_message = reply_to_message
         self.replies = []
         self.markups = []
 
